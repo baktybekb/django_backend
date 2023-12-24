@@ -1,7 +1,9 @@
 import json
+from pprint import pprint
 
 from django.contrib.auth.models import User
-from django.db.models import Count, Case, When, Avg
+from django.db import connection
+from django.db.models import Count, Case, When, Avg, F, Prefetch
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.exceptions import ErrorDetail
@@ -9,6 +11,7 @@ from rest_framework.test import APITestCase
 
 from store.models import Book, UserBookRelation
 from store.serializers import BooksSerializer
+from django.test.utils import CaptureQueriesContext
 
 
 class BooksAPITestCase(APITestCase):
@@ -22,16 +25,19 @@ class BooksAPITestCase(APITestCase):
 
     def test_get(self):
         url = reverse('book-list')
-        response = self.client.get(url)
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(url)
+            self.assertEqual(2, len(queries))
         books = Book.objects.all().annotate(
             annotated_likes=Count(Case(When(userbookrelation__like=True, then=1))),
-            rating=Avg('userbookrelation__rate')
-        ).order_by('id')
+            rating=Avg('userbookrelation__rate'),
+            owner_name=F('owner__username')).prefetch_related(
+            Prefetch('readers', queryset=User.objects.all().only('first_name', 'last_name'))).order_by('id')
         serializer_data = BooksSerializer(books, many=True).data
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pprint(response.data)
         self.assertEqual(serializer_data, response.data)
         self.assertEqual(serializer_data[0]['rating'], '5.00')
-        self.assertEqual(serializer_data[0]['likes_count'], 1)
         self.assertEqual(serializer_data[0]['annotated_likes'], 1)
 
     def test_get_search(self):
@@ -39,8 +45,9 @@ class BooksAPITestCase(APITestCase):
         response = self.client.get(url, data={'search': 'Author 1'})
         books = Book.objects.filter(author_name='Author 1').annotate(
             annotated_likes=Count(Case(When(userbookrelation__like=True, then=1))),
-            rating=Avg('userbookrelation__rate')
-        ).order_by('id')
+            rating=Avg('userbookrelation__rate'),
+            owner_name=F('owner__username')).prefetch_related(
+            Prefetch('readers', queryset=User.objects.all().only('first_name', 'last_name'))).order_by('id')
         serializer_data = BooksSerializer(books, many=True).data
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(serializer_data, response.data)
