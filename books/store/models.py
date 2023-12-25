@@ -1,5 +1,6 @@
 from django.contrib.auth.models import User
 from django.db import models
+from django.db.models import Avg
 
 
 class Book(models.Model):
@@ -8,9 +9,14 @@ class Book(models.Model):
     author_name = models.CharField(max_length=255, default='Author')
     owner = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='my_books')
     readers = models.ManyToManyField(User, through='UserBookRelation', related_name='books')
+    rating = models.DecimalField(max_digits=3, decimal_places=2, null=True)
 
     def __str__(self):
         return f'{self.id}: {self.name}'
+
+    def set_rating(self):
+        self.rating = UserBookRelation.objects.filter(book=self).aggregate(rating=Avg('rate'))['rating']
+        self.save()
 
 
 class UserBookRelation(models.Model):
@@ -30,3 +36,10 @@ class UserBookRelation(models.Model):
 
     def __str__(self):
         return f'{self.user.username}: {self.book.name}, rate: {self.rate}'
+
+    def save(self, *args, **kwargs):
+        old_rate = UserBookRelation.objects.get(id=self.pk).rate if self.pk else None
+        super(UserBookRelation, self).save(*args, **kwargs)
+        new_rate = self.rate
+        if old_rate != new_rate or self.pk is None:
+            self.book.set_rating()

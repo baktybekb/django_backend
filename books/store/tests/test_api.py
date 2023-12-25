@@ -22,6 +22,7 @@ class BooksAPITestCase(APITestCase):
         self.book_3 = Book.objects.create(name='Test book 3', price=55, author_name='Author 2')
 
         UserBookRelation.objects.create(user=self.user, book=self.book_1, rate=5, like=True)
+        self.book_1.refresh_from_db()
 
     def test_get(self):
         url = reverse('book-list')
@@ -30,7 +31,6 @@ class BooksAPITestCase(APITestCase):
             self.assertEqual(2, len(queries))
         books = Book.objects.all().annotate(
             annotated_likes=Count(Case(When(userbookrelation__like=True, then=1))),
-            rating=Avg('userbookrelation__rate'),
             owner_name=F('owner__username')).prefetch_related(
             Prefetch('readers', queryset=User.objects.all().only('first_name', 'last_name'))).order_by('id')
         serializer_data = BooksSerializer(books, many=True).data
@@ -45,7 +45,6 @@ class BooksAPITestCase(APITestCase):
         response = self.client.get(url, data={'search': 'Author 1'})
         books = Book.objects.filter(author_name='Author 1').annotate(
             annotated_likes=Count(Case(When(userbookrelation__like=True, then=1))),
-            rating=Avg('userbookrelation__rate'),
             owner_name=F('owner__username')).prefetch_related(
             Prefetch('readers', queryset=User.objects.all().only('first_name', 'last_name'))).order_by('id')
         serializer_data = BooksSerializer(books, many=True).data

@@ -1,5 +1,5 @@
 from django.contrib.auth.models import User
-from django.db.models import Count, Case, When, Avg, Prefetch
+from django.db.models import Count, Case, When, Prefetch
 from django.shortcuts import render
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.mixins import UpdateModelMixin
@@ -17,7 +17,6 @@ class BookViewSet(ModelViewSet):
     permission_classes = [IsOwnerOrStaffOrReadOnly]
     queryset = Book.objects.all().annotate(
         annotated_likes=Count(Case(When(userbookrelation__like=True, then=1))),
-        rating=Avg('userbookrelation__rate'),
         owner_name=F('owner__username')
     ).prefetch_related(Prefetch('readers', queryset=User.objects.all().only('first_name', 'last_name'))).order_by('id')
     serializer_class = BooksSerializer
